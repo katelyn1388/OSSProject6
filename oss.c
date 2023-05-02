@@ -35,19 +35,39 @@ struct my_msgbuf {
 //Initializing shared memory for nano seconds
 #define nano_key 25218510
 
-#define max_processes 20
+#define max_processes 18
 
 
 FILE *logFile;
+
+struct pageTable {
+	int pageSize = 1;   //1K
+	int frameNumber;
+	int validBit;
+	int maxSize;
+	int pages = 32;
+}
+
 
 //Process table blocks
 struct PCB {
 	int occupied;
 	pid_t pid;
+	int pageRequest;
+	pageTable page;
 };
+
+struct frame {
+	int dirtyBit;
+	int occupied;
+	int processPid;
+	pageTable page;
+}
+
 
 //Process table
 struct PCB processTable[18] = {{0}};
+struct frame frameTable[256];   //256K
 
 struct PCB process;
 
@@ -66,7 +86,7 @@ key_t key;
 
 
 int main(int argc, char **argv) {
-	int totalWorkers = 0, simulWorkers = 0, tempPid, i, c, billion = 1000000000; 
+	int totalWorkers = 0, simulWorkers = 0, tempPid, i, c, billion = 1000000000, totalFrames = 256, pageSize = 1000; 
 	bool fileGiven = false, messageReceivedBool = false, doneRunning = false, doneCreating = false;
 	char *userFile = NULL;
 	struct PCB currentProcess;
@@ -165,9 +185,104 @@ int main(int argc, char **argv) {
 		startTime = time(NULL);
 		endTime = startTime + 2;
 
+		//Random new process time
+		srand(getpid());
+		int randomTime = (rand() % (maxNewNano - 1 + 1)) + 1;
+		int chooseTimeNano = *seconds, chooseTimeSec = *seconds;
+		if((*nanoSeconds + randomTime) < billion)
+			chooseTimeNano += randomTime;
+		else
+		{
+			chooseTimeNano = ((*seconds + randomTime) - billion);
+			chooseTimeSec += 1;
+		}
 
-		while(totalWorkers <= 100 && (time(NULL) < endTime)) {
 
+
+
+		while(totalWorkers <= 100 && (time(NULL) < endTime)) {	
+			//If it's time to make another child, do so as long as there's less than 18 simultaneous already running
+			if(*seconds > chooseTimeSec || (*seconds == chooseTimeSec && *nanoSeconds >= chooseTimeNano)) {
+				if((simulWorkers < 18) && !doneCreating) {
+					for(i = 0; i < 18; i++) {
+						if(processTable[i].occupied == 0) {
+							currentProcess = processTable[i];
+							break;
+						}
+					}
+
+					//Forking child
+					tempPid = fork();
+					
+					//Setting new random time for next process creation
+					randomTime = rand() % maxNewNano;
+					chooseTimeNano = *seconds, chooseTimeSec = *seconds;
+					if((*nanoSeconds + randomTime) < billion)
+						chooseTimeNano += randomTime;
+					else
+					{
+						chooseTimeNano = ((*seconds + randomTime) - billion);
+						chooseTimeSec += 1;
+					}
+
+					//Filling out process table for child process
+					currentProcess.occupied = 1;
+					currentProcess.pid = tempPid;
+
+					char* args[] = {"./worker", 0};
+
+					//Execing child off
+					if(tempPid < 0) { 
+						perror("fork");
+						printf("Terminating: fork failed");
+						exit(1);
+					} else if(tempPid == 0) {
+						printf("execing a child: %d", getpid());
+						execlp(args[0], args[0], args[1], NULL); 
+						printf("Exec failed, terminating");
+						exit(1);
+					} 
+
+					simulWorkers++;
+					totalWorkers++;
+				}
+			}
+
+
+			if(msgrcv(msqid, &received, sizeof(my_msgbuf), getpid(), IPC_NOWAIT) == -1) {
+				if(errno == ENOMSG) {
+					messageReceivedBool = false;
+				} else {
+					perror("\n\nFailed to receive message from child\n");
+					exit(1);
+				}
+			} else {
+				messageReceivedBool = true;
+				for(i = 0; i < 18; i++) {
+					pageRequest = message.request;
+					if(processTable[i].pid == received.pid) {
+						currentProcess = processTable[i];
+						break;
+					} 	
+				}
+			}
+
+
+
+			//Increment clock 100 ns before message send
+
+
+
+
+
+
+			if((*nanoSeconds + nanoIncrement) < billion)
+				*nanoSeconds += nanoIncrement;
+			else
+			{
+				*nanoSeconds = ((*nanoSeconds + nanoIncrement) - billion);
+				*seconds += 1;
+			}
 		}
 
 
