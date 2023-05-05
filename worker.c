@@ -19,6 +19,9 @@ struct my_msgbuf {
 	long mtype;
 	int pid;
 	int request;
+	int offset;
+	int choice;
+	bool faulted;
 }my_msgbuf;
 
 
@@ -29,7 +32,6 @@ int main(int argc, char** iterations) {
 	int msqid, i;
 	key_t key;
 	message.mtype = getppid();
-	message.intData = getppid();
 	received.mtype = 1;
 	message.pid = getpid();
 
@@ -83,3 +85,98 @@ int main(int argc, char** iterations) {
 
 
 	printf("\nWorker started: %d\n", getpid());
+
+
+
+	int memoryReferences, terminateCheck = 1000, terminateRandomNum, randomOffset, choiceNum;
+	int memoryPerSec, pageFaults, memAccessSpeedSec, memAccessSpeedNano, nextSecond = *sharedSeconds + 1, startingSecond = *sharedSeconds, memoryAcceses, pageFaults;
+	int beforeAccessSec, beforeAccessNano, afterAccessSec, afterAccessNano;
+	double memAccessSpeed;
+	bool terminate = false, messageReceived = false;
+	char seconds[20];
+	char nanoSeconds[20];
+
+
+
+	while(!terminate) {
+		messageReceived = false;
+		message.request = (rand() % (31 - 0 + 1));
+		message.offset = ((message.request * 1024) + (rand() % (1023 - 0 + 1)));
+		choiceNum = (rand() % (100 - 0 + 1));
+		if(choiceNum < 80) {
+			message.choice = 1;   //Read
+		} else {
+			message.choice = 2;   //Write
+		}
+
+		if((memoryReferences % terminateCheck) == 0) {
+			//Decide to terminate or not
+			terminateRandomNum = (rand() % (100 - 1 + 1) + 1);
+			if(terminateRandomNum < 30) {
+				terminate = true;
+				message.choice = 3;
+			}
+		}
+
+
+
+		if(msgsnd(msqid, &message, sizeof(my_msgbuf) - sizeof(long), 0) == -1) {
+			perror("msgsend to parent failed");
+			exit(1);
+		}
+
+		beforeAccessSec = *sharedSeconds;
+		beforeAccessNano = *sharedNanoSeconds
+
+		while(!messageReceived) {
+			if(msgrcv(msqid, &received, sizeof(my_msgbuf), getpid(), 0) == -1) {
+				if(errno == ENOMSG) {
+					receivedMessage = false;
+				} else {
+					perror("msgrcv from parent failed");
+					exit(1);
+				}
+			} else
+				messageReceived = true;
+
+		}
+
+		afterAccessSec = *sharedSeconds;
+		afterAccessNano = *sharedNanoSeconds;
+		memAccessSpeedSec = (afterAccessSec - beforeAccessSec);
+		memAccessSpeed += (afterAccessNano - beforeAccessNano);
+		sprintf(seconds, "%d.", memAccessSpeedSec);
+		sprintf(nanoSeconds, "%d", memAccessSpeedNano);
+		strcat(seconds, nanoSeconds);
+		memAccessSpeed += atof(seconds);
+
+
+
+		if(received.choice == 1 || received.choice == 2) {
+			memoryReferences++;
+			memoryAccesses++;
+			if(received.faulted == true) 
+				pageFaults++;
+		}
+
+		if(nextSecond <= *sharedSeconds) {
+			nextSecond++;
+			memoryPerSec += memoryAccesses;
+			memoryAccesses = 0;
+		}
+
+
+
+	}
+
+
+
+
+
+	printf("\nChild %d is terminating", getpid());
+
+	printf("\n%d:  number of memory accesses per second: %f", getpid(), ((double)memoryPerSec / (double)(*sharedSeconds - startingSecond)));
+	printf("\n%d:  number of page faults per memory access: %f", getpid(), ((double)pageFaults / (double)memoryReferences);
+	printf("\n%d:  average memory access speed: %f", getpid(), ());    //FINISH THIS
+
+	return 0;

@@ -25,6 +25,9 @@ struct my_msgbuf {
 	long mtype;
 	int pid;
 	int request;
+	int offset;
+	int choice;
+	bool faulted;
 } my_msgbuf;
 
 
@@ -45,7 +48,7 @@ struct pageTable {
 	int frameNumber;
 	int validBit;
 	int maxSize;
-	int pages = 32;
+	int pages[32];
 }
 
 
@@ -55,6 +58,7 @@ struct PCB {
 	pid_t pid;
 	int pageRequest;
 	pageTable page;
+	int memoryAddress;
 };
 
 struct frame {
@@ -62,6 +66,7 @@ struct frame {
 	int occupied;
 	int processPid;
 	pageTable page;
+	int referenceByte;
 }
 
 
