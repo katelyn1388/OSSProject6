@@ -44,12 +44,12 @@ struct my_msgbuf {
 FILE *logFile;
 
 struct pageTable {
-	int pageSize = 1;   //1K
+	int pageSize;   //1K
 	int frameNumber;
 	int validBit;
 	int maxSize;
 	int pages[32];
-}
+};
 
 
 //Process table blocks
@@ -57,17 +57,18 @@ struct PCB {
 	int occupied;
 	pid_t pid;
 	int pageRequest;
-	pageTable page;
+	struct pageTable page;
 	int memoryAddress;
+	char FIFOHead;
 };
 
 struct frame {
 	int dirtyBit;
 	int occupied;
 	int processPid;
-	pageTable page;
+	struct pageTable page;
 	int referenceByte;
-}
+};
 
 
 //Process table
@@ -83,12 +84,11 @@ void Enqueue(struct PCB process);
 void Dequeue();
 struct PCB Front();
 
-static void myHandler(int s);
+static void myhandler(int s);
 static int setupinterrupt();
-static int setuptimer();
+static int setupitimer();
 
 
-bool verboseOn = false;
 struct my_msgbuf message;
 struct my_msgbuf received;
 int msqid;
@@ -97,16 +97,19 @@ key_t key;
 
 
 int main(int argc, char **argv) {
-	int totalWorkers = 0, simulWorkers = 0, tempPid, i, c, billion = 1000000000, totalFrames = 256, pageSize = 1000; 
-	bool fileGiven = false, messageReceivedBool = false, doneRunning = false, doneCreating = false;
+	int totalWorkers = 0, simulWorkers = 0, tempPid, i, c, billion = 1000000000, totalFrames = 256, pageSize = 1000, maxNewNano = 500000000, pageRequest = -1, nanoIncrement = 5500; 
+	bool fileGiven = false, messageReceivedBool = false, doneRunning = false, doneCreating = false, verboseOn = false;
 	char *userFile = NULL;
 	struct PCB currentProcess;
 
-	while((c = getopt(argc, argv, "hf:")) != -1) {
+	while((c = getopt(argc, argv, "hvf:")) != -1) {
 		switch(c)
 		{
 			case 'h':
 				help();
+			case 'v':
+				verboseOn = true;
+				break;
 			case 'f':
 				userFile = optarg;
 				fileGiven = true;
@@ -280,6 +283,8 @@ int main(int argc, char **argv) {
 
 
 
+
+
 			//Increment clock 100 ns before message send
 
 
@@ -317,6 +322,7 @@ int main(int argc, char **argv) {
 
 		printf("\n\n\n\nProgram is done\n");
 		return(0);
+	}
 }
 
 

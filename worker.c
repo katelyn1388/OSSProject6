@@ -11,6 +11,7 @@
 #include <stdbool.h>
 #include <sys/msg.h>
 #include <errno.h>
+#include <string.h>
 
 
 
@@ -22,7 +23,7 @@ struct my_msgbuf {
 	int offset;
 	int choice;
 	bool faulted;
-}my_msgbuf;
+} my_msgbuf;
 
 
 
@@ -80,19 +81,15 @@ int main(int argc, char** iterations) {
 	int * sharedSeconds = (int *)(sec_ptr);
 	int * sharedNanoSeconds = (int *)(nano_ptr);
 
-	int starterNano = *sharedNanoSeconds;
-	int starterSec = *sharedSeconds + 1;
-
 
 	printf("\nWorker started: %d\n", getpid());
 
 
-
-	int memoryReferences, terminateCheck = 1000, terminateRandomNum, randomOffset, choiceNum;
-	int memoryPerSec, pageFaults, memAccessSpeedSec, memAccessSpeedNano, nextSecond = *sharedSeconds + 1, startingSecond = *sharedSeconds, memoryAcceses, pageFaults;
+	int memoryReferences, terminateCheck = 1000, terminateRandomNum, choiceNum;
+	int memoryPerSec, pageFaults, memAccessSpeedSec, memAccessSpeedNano, nextSecond = *sharedSeconds + 1, startingSecond = *sharedSeconds, memoryAccesses;
 	int beforeAccessSec, beforeAccessNano, afterAccessSec, afterAccessNano;
 	double memAccessSpeed;
-	bool terminate = false, messageReceived = false;
+	bool terminate = false, messageReceived;
 	char seconds[20];
 	char nanoSeconds[20];
 
@@ -121,19 +118,19 @@ int main(int argc, char** iterations) {
 
 
 		if(msgsnd(msqid, &message, sizeof(my_msgbuf) - sizeof(long), 0) == -1) {
-			perror("msgsend to parent failed");
+			perror("\nmsgsend to parent failed");
 			exit(1);
 		}
 
 		beforeAccessSec = *sharedSeconds;
-		beforeAccessNano = *sharedNanoSeconds
+		beforeAccessNano = *sharedNanoSeconds;
 
 		while(!messageReceived) {
 			if(msgrcv(msqid, &received, sizeof(my_msgbuf), getpid(), 0) == -1) {
 				if(errno == ENOMSG) {
-					receivedMessage = false;
+					messageReceived = false;
 				} else {
-					perror("msgrcv from parent failed");
+					perror("\nmsgrcv from parent failed");
 					exit(1);
 				}
 			} else
@@ -176,7 +173,9 @@ int main(int argc, char** iterations) {
 	printf("\nChild %d is terminating", getpid());
 
 	printf("\n%d:  number of memory accesses per second: %f", getpid(), ((double)memoryPerSec / (double)(*sharedSeconds - startingSecond)));
-	printf("\n%d:  number of page faults per memory access: %f", getpid(), ((double)pageFaults / (double)memoryReferences);
-	printf("\n%d:  average memory access speed: %f", getpid(), ());    //FINISH THIS
+	printf("\n%d:  number of page faults per memory access: %f", getpid(), ((double)pageFaults / (double)memoryReferences));
+	printf("\n%d:  average memory access speed: %f", getpid(), (memAccessSpeed / (double)memoryReferences));   
 
 	return 0;
+
+}
