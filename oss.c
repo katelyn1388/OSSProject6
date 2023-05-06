@@ -77,6 +77,12 @@ struct frame frameTable[256];   //256K
 struct PCB process;
 
 void help();
+bool isEmpty();
+bool isFull();
+void Enqueue(struct PCB process);
+void Dequeue();
+struct PCB Front();
+
 static void myHandler(int s);
 static int setupinterrupt();
 static int setuptimer();
@@ -334,6 +340,64 @@ void help() {
 	printf("\n./oss -f logfile.txt");
 }
 
+
+
+struct PCB queue[max_processes];
+
+//Queue function pointers
+int front =  -1; 
+int rear = -1;
+
+
+bool isEmpty() {
+	return(front == -1 && rear == -1);
+}
+
+bool isFull() {
+	if((rear + 1) + front == max_processes)
+		return true;
+
+	return false;
+}
+
+
+
+void Enqueue(struct PCB process) {
+	if(isFull()) 
+		return;
+	if(isEmpty()) {
+		front = rear = 0;
+	} else {
+		rear += 1;
+		if(rear == max_processes)
+			rear = rear % max_processes;
+	}
+
+	queue[rear] = process;	
+}
+
+
+void Dequeue() {
+	if(isEmpty()) {
+		printf("\n\nError: Ready queue is empty\n\n");
+		return;
+	} else if(front == rear) 
+		rear = front = -1;
+	else {
+		front += 1;
+		if(front == max_processes)
+			front = front % max_processes;
+	}
+}
+
+
+struct PCB Front() {
+	if(front == -1) {
+		printf("\n\nError: Cannot return front of an empty queue");
+		exit(1);
+	}
+	return queue[front];
+}
 
 
 
