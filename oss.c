@@ -88,7 +88,7 @@ struct PCB Front();
 bool framesIsEmpty();
 bool framesIsFull();
 void EnqueuePage(struct pageTable page);
-void DequeuePage();
+void DequeuePage(int frameNumber);
 struct pageTable FrontPage();
 
 static void myhandler(int s);
@@ -411,7 +411,7 @@ int main(int argc, char **argv) {
 						frameTable[frameNumber].processPid = currentProcess.pid;
 						frameTable[frameNumber].page = currentProcess.pageTable.pages[message.request];
 						frameTable[frameNumber].FIFOHead = ' ';
-
+						
 						if(framesIsFull()) {   
 							if(verboseOn && fileLines < lineMax) {
 								fprintf(logFile, "\nOss: Clearing frame %d and swapping in process %d's page %d", frameNumber, currentProcess.pid, 
@@ -429,6 +429,19 @@ int main(int argc, char **argv) {
 										message.request, frameNumber);
 							}
 						}
+
+						if(message.choice == 2) {
+							frameTable[frameNumber].dirtyBit = 1;
+							fprintf(logFile, "\nOss: Indicating to %d that write has happened to address %d",  currentProcess.pid, 
+										message.offset);
+							fprintf(logFile, "\nOss: Dirty bit of frame %d set, additng additional time to clock", frameNumber);
+							fileLines += 2;
+							incrementClock(100);
+							printf("\nOss: Indicating to %d that write has happened to address %d",  currentProcess.pid, 
+										message.offset);
+
+						}
+
 					}
 				}
 			}
@@ -442,7 +455,7 @@ int main(int argc, char **argv) {
 			//Print current memoory allocation table every second
 			if(printTime <= *seconds) {
 				struct pageTable frontPage = FrontPage();
-				int headFIFOFrame = frontPage.frameNumber;
+				int headFIFOFrame = frontPage;
 				headFIFOFrame.FIFOHead = '*';
 				if(verboseOn && fileLines < lineMax) {
 					fprintf(logFile, "\n\n\nCurrent memory layout at time %d:%d is:", *seconds, *nanoSeconds);
@@ -452,6 +465,7 @@ int main(int argc, char **argv) {
 						fprintf(logFile, "\nFrame %d:        %d        %d          %s", i, frameTable[i].occupied, frameTable[i].dirtyBit, 
 								&frameTable[i].FIFOHead);
 					}
+					fileLines += 258;
 				}
 				printTime++;
 			}
@@ -612,8 +626,7 @@ struct PCB Front() {
 
 
 
-
-struct pageTable frameQueue[max_frames];
+struct frameTable frameQueue[max_frames];
 
 //Frame queue function pointers
 int frameFront =  -1; 
@@ -622,7 +635,7 @@ int frameRear = -1;
 
 int frameSpot() {
 	int location, i;
-	struct pageTable frontPage;
+	struct frameTable frontPage;
 	if(framesIsFull()) {
 		frontPage = FrontPage();
 		location = frontPage.frameNumber;
@@ -653,7 +666,7 @@ bool framesIsFull() {
 
 
 
-void EnqueuePage(struct pageTable page) {
+void EnqueuePage(struct framTable page) {
 	if(framesIsFull()) 
 		return;
 	if(framesIsEmpty()) {
@@ -668,7 +681,7 @@ void EnqueuePage(struct pageTable page) {
 }
 
 
-void DequeuePage() {
+/*void DequeuePage() {
 	if(framesIsEmpty()) {
 		printf("\n\nError: Frames queue is empty\n\n");
 		return;
@@ -679,7 +692,43 @@ void DequeuePage() {
 		if(frameFront == max_frames)
 			frameFront = frameFront % max_frames;
 	}
+}*/
+
+
+void DequeuePage(int frameNumber) {
+        if(framesIsEmpty()) {
+                printf("\n\nError: Frames queue is empty\n\n");
+                return;
+        } else {
+                int i = frameFront;
+                while(i != frameRear) {
+                        if(frameQueue[i].frameNumber == frameNumber) {
+                                if(frameFront == i) {
+                                        frameFront += 1;
+                                        if(frameFront == max_frames)
+                                                frameFront = frameFront % max_frames;
+                                } else if(frameRear == i) {
+                                        frameRear -= 1;
+                                        if(frameRear == -1)
+                                                frameRear = max_frames - 1;
+                                } else {
+                                        int j;
+                                        for(j = i; j < frameRear; j++) {
+                                                frameQueue[j] = frameQueue[j+1];
+                                        }
+                                        frameRear -= 1;
+                                        if(frameRear == -1)
+                                                frameRear = max_frames - 1;
+                                }
+                                return;
+                        }
+                        i = (i + 1) % max_frames;
+                }
+                printf("\n\nError: Frame %d not found in queue\n\n", frameNumber);
+        }
 }
+
+
 
 
 struct pageTable FrontPage() {
