@@ -39,6 +39,7 @@ struct my_msgbuf {
 #define nano_key 25218510
 
 #define max_processes 18
+#define max_frames 256
 
 
 FILE *logFile;
@@ -57,7 +58,7 @@ struct PCB {
 	int occupied;
 	pid_t pid;
 	int pageRequest;
-	struct pageTable page;
+	struct pageTable pageTable;
 	int memoryAddress;
 	char FIFOHead;
 };
@@ -77,12 +78,18 @@ struct frame frameTable[256];   //256K
 
 struct PCB process;
 
+void incrementClock(int nanoIncrement);
 void help();
 bool isEmpty();
 bool isFull();
 void Enqueue(struct PCB process);
 void Dequeue();
 struct PCB Front();
+bool framesIsEmpty();
+bool framesIsFull();
+void EnqueuePage(struct pageTable page);
+void DequeuePage();
+struct pageTable FrontPage();
 
 static void myhandler(int s);
 static int setupinterrupt();
@@ -97,8 +104,9 @@ key_t key;
 
 
 int main(int argc, char **argv) {
-	int totalWorkers = 0, simulWorkers = 0, tempPid, i, c, billion = 1000000000, totalFrames = 256, pageSize = 1000, maxNewNano = 500000000, pageRequest = -1, nanoIncrement = 5500; 
-	bool fileGiven = false, messageReceivedBool = false, doneRunning = false, doneCreating = false, verboseOn = false;
+	int totalWorkers = 0, simulWorkers = 0, tempPid, i, j, c, billion = 1000000000, totalFrames = 256, pageSize = 1000, maxNewNano = 500000000, pageRequest = -1, currentFrame = -1; 
+	int fileLines = 0, lineMax = 9500, frameNumber, printTime = 1;
+	bool fileGiven = false, messageReceivedBool = false, doneRunning = false, doneCreating = false, verboseOn = false, inFrame, terminating = false;
 	char *userFile = NULL;
 	struct PCB currentProcess;
 
@@ -194,6 +202,15 @@ int main(int argc, char **argv) {
 
 		message.mtype = 1;
 
+		//Initializing the frame number for all pages in each process to -1 
+		for(i = 0; i < 18; i++) {
+			for(j = 0; j < 32; j++) {
+				processTable[i].page[j].frameNumber = -1;
+			}
+		}
+
+
+
 		//Getting current seconds and adding 3 to stop while loop after 3 real life seconds
 		time_t startTime, endTime;
 		startTime = time(NULL);
@@ -273,7 +290,7 @@ int main(int argc, char **argv) {
 			} else {
 				messageReceivedBool = true;
 				for(i = 0; i < 18; i++) {
-					pageRequest = message.request;
+					pageRequest = received.request;
 					if(processTable[i].pid == received.pid) {
 						currentProcess = processTable[i];
 						break;
@@ -282,23 +299,142 @@ int main(int argc, char **argv) {
 			}
 
 
+			if(messageReceivedBool) {
+				//Process's page request is already in a frame and they just want to read it
+				if(message.choice == 1) {
+					if(verboseOn && fileLines < lineMax) {
+						fprintf(logFile, "\nOss: process %d requesting read of address %d at time %d:%d", currentProcess.pid,
+								received.offset, *seconds, *nanoSeconds);
+						fileLines++;
+						printf("\nOss: process %d requesting read of address %d at time %d:%d", currentProcess.pid, message.offset, *seconds, *nanoSeconds);
+					}
+
+					terminating = false;
+
+
+					if(currentProcess.pageTable.pages[pageRequest].frameNumber >= 0) { 
+						inFrame = true;
+						currentFrame = currentProcess.pageTable.pages[pageRequest].frameNumber;
+					} else
+						inFrame = false;
+
+				} //Process is requesting to write to page
+				else if(message.choice == 2) {    
+					if(verboseOn && fileLines < lineMax) {
+						fprintf(logFile, "\nOss: process %d requesting write of address %d at time %d:%d", currentProcess.pid,
+								received.offset, *seconds, *nanoSeconds);
+						fileLines++;
+						printf("\nOss: process %d requesting write of address %d at time %d:%d", currentProcess.pid, received.offset, *seconds, *nanoSeconds);
+					}
+
+					terminating = false;
+				
+					if(currentProcess.pageTable.pages[pageRequest].frameNumber >= 0) { 
+						inFrame = true;
+						currentFrame = currentProcess.pageTable.pages[pageRequest].frameNumber;
+					} else
+						inFrame = false;
 
 
 
-			//Increment clock 100 ns before message send
+				} //Process is terminating
+				else {
+					if(verboseOn && fileLines < lineMax) {
+						fprintf(logFile, "\nOss: process %d terminating at time %d:%d", currentProcess.pid,
+								received.offset, *seconds, *nanoSeconds);
+						fileLines++;
+						printf("\nOss: process %d terminating at time %d:%d", currentProcess.pid, received.offset, *seconds, *nanoSeconds);
+					}
+
+					terminating = true;
+
+					for(i = 0; i < 32; i++) {
+						//If the page is in a frame, free up that frame
+					}
+			
+				}
 
 
 
+				if(!terminating) {
+					//Process's request page is already in memory
+					if(inFrame) {
+						if(message.choice == 1) {
+							if(verboseOn && fileLines < lineMax) {
+								fprintf(logFile, "\nOss: Address %d in frame %d, giving data to %d at time  %d:%d",
+										received.offset, currentFrame, currentProcess.pid, *seconds, *nanoSeconds);
+								fileLines++;
+								printf("\nOss: Address %d in frame %d, giving data to %d at time  %d:%d",
+										received.offset, currentFrame, currentProcess.pid, *seconds, *nanoSeconds);
+							}
+						}
+						//Process requested to write to page
+						if(message.choice == 2) {
+							frameTable[currentFrame].dirtyBit = 1;
+							if(verboseOn && fileLines < lineMax) {
+								fprintf(logFile, "\nOss: Address %d in frame %d, writing data to frame at time  %d:%d",
+										received.offset, currentFrame,  *seconds, *nanoSeconds);
+								fprintf(logFile, "\nOss: Indicating to %d that write has happened to address %d", currentProcess.pid, received.offset);
+								fileLines += 2;
+								printf("\nOss: Address %d in frame %d, writing data to frame at time  %d:%d",
+										received.offset, currentFrame, *seconds, *nanoSeconds);
+							}
+						}
 
+						//Send message back and incremenet clock 100ns
+						incrementClock(100);
+						message.faulted = false
+						message.choice = received.choice;
+						message.mtype = received.pid;
 
+						if(msgsnd(msqid, &message, sizeof(my_msgbuf) - sizeof(long), 0) == -1) {
+							perror("\n\nmsgsend to child failed");
+							exit(1);
+						}
+					       
+					} else {
+						if(verboseOn && fileLines < lineMax) {
+							fprintf(logFile, "\nOss: address %d is not in a frame, pagefault", message.offset);
+							fileLines++;
+							printf("\nOss: address %d is not in a frame, pagefault", message.offset);
+						}
+				
+						//Increment clock 14ms	
+						incrementClock(14000000);
 
-			if((*nanoSeconds + nanoIncrement) < billion)
-				*nanoSeconds += nanoIncrement;
-			else
-			{
-				*nanoSeconds = ((*nanoSeconds + nanoIncrement) - billion);
-				*seconds += 1;
+						frameNumber = frameSpot();
+						frameTable[frameNumber]. 
+
+						if(frameIsFull()) {   
+							
+						} else {
+
+						}
+					}
+				}
 			}
+
+
+
+
+
+
+
+			//Print current memoory allocation table every second
+			if(printTime <= *seconds) {
+				if(verboseOn && fileLines < lineMax) {
+
+					fprintf(logFile, "\n\n\nCurrent memory layout at time %d:%d is:");
+					fprintf(logFile, "\n           Occupied     DirtyBit     HeadOfFIFO");
+					//print memory allocation table
+				}
+				printTime++;
+			}
+
+
+
+
+				
 		}
 
 
@@ -327,7 +463,50 @@ int main(int argc, char **argv) {
 
 
 
+void incrementClock(int nanoIncrement) {
+	int sec_id = shmget(sec_key, sizeof(int) * 10, IPC_CREAT | 0666);        //Allocating shared memory with key
+	if(sec_id <= 0) {                                                       //Testing if shared memory allocation was successful or not
+		fprintf(stderr, "Shared memory get failed\n");
+		exit(1);
+	}
 
+
+	//Initializing shared memory for nano seconds
+	int nano_id = shmget(nano_key, sizeof(int) * 10, IPC_CREAT | 0666);
+	if(nano_id <= 0) {
+		fprintf(stderr, "Shared memory for nanoseconds failed\n");
+		exit(1);
+	}
+
+
+	const int *sec_ptr = (int *) shmat(sec_id, 0, 0);      //Pointer to shared memory address
+	if(sec_ptr <= 0) {                               //Testing if pointer is actually working
+		fprintf(stderr, "Shared memory attach failed\n");
+		exit(1);
+	}
+
+
+	const int *nano_ptr = (int *) shmat(nano_id, 0, 0);
+	if(nano_ptr <= 0) {
+		fprintf(stderr, "Shared memory attachment for nanoseconds failed\n");
+		exit(1);
+	}
+
+
+	//Setting seconds and nanoseconds to initial values
+	int * seconds = (int *)(sec_ptr);
+
+	int * nanoSeconds = (int *)(nano_ptr);
+
+
+	if((*nanoSeconds + nanoIncrement) < billion)
+		*nanoSeconds += nanoIncrement;
+	else
+	{
+		*nanoSeconds = ((*nanoSeconds + nanoIncrement) - billion);
+		*seconds += 1;
+	}
+}
 
 
 
@@ -344,6 +523,25 @@ void help() {
 	printf("\n-f     the name of the file for output to be logged to");
 	printf("\n\nInput example");
 	printf("\n./oss -f logfile.txt");
+}
+
+
+int frameSpot() {
+	int location, i;
+	struct pageTable frontPage;
+	if(framesIsFull()) {
+		frontPage = FrontPage();
+		location = frontPage.frameNumber;
+		DequeuePage();
+	} else {
+		for(i = 0; i < 256; i++) {
+			if(frame[i].occupied == 0) {
+				location = i;	
+				break;
+			}	
+		}	
+	}
+	return location;
 }
 
 
@@ -385,7 +583,7 @@ void Enqueue(struct PCB process) {
 
 void Dequeue() {
 	if(isEmpty()) {
-		printf("\n\nError: Ready queue is empty\n\n");
+		printf("\n\nError: Process queue is empty\n\n");
 		return;
 	} else if(front == rear) 
 		rear = front = -1;
@@ -403,6 +601,66 @@ struct PCB Front() {
 		exit(1);
 	}
 	return queue[front];
+}
+
+
+
+
+struct pageTable frameQueue[max_frames];
+
+//Frame queue function pointers
+int frameFront =  -1; 
+int frameRear = -1;
+
+
+bool framesIsEmpty() {
+	return(frameFront == -1 && frameRear == -1);
+}
+
+bool framesIsFull() {
+	if((frameRear + 1) + frameFront == max_frames)
+		return true;
+
+	return false;
+}
+
+
+
+void EnqueuePage(struct pageTable page) {
+	if(framesIsFull()) 
+		return;
+	if(framesIsEmpty()) {
+		frameFront = frameRear = 0;
+	} else {
+		frameRear += 1;
+		if(frameRear == max_frames)
+			frameRear = frameRear % max_frames;
+	}
+
+	frameQueue[frameRear] = page;	
+}
+
+
+void DequeuePage() {
+	if(framesIsEmpty()) {
+		printf("\n\nError: Frames queue is empty\n\n");
+		return;
+	} else if(frameFront == frameRear) 
+		frameRear = frameFront = -1;
+	else {
+		frameFront += 1;
+		if(frameFront == max_frames)
+			frameFront = frameFront % max_frames;
+	}
+}
+
+
+struct pageTable FrontPage() {
+	if(frameFront == -1) {
+		printf("\n\nError: Cannot return front of an empty queue: frame");
+		exit(1);
+	}
+	return frameQueue[frameFront];
 }
 
 
