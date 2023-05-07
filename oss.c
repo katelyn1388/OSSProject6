@@ -45,8 +45,8 @@ struct my_msgbuf {
 FILE *logFile;
 
 struct pageTable {
-	int pageSize;   //1K
-	int frameNumber;
+	//int pageSize;   //1K
+	//int frameNumber;
 	int pages[32];
 };
 
@@ -56,7 +56,7 @@ struct PCB {
 	int occupied;
 	pid_t pid;
 	int pageRequest;
-	struct pageTable page;
+	struct pageTable pageTable;
 	int memoryAddress;
 	char FIFOHead;
 };
@@ -66,7 +66,7 @@ struct frame {
 	int occupied;
 	int processPid;
 	struct pageTable page;
-	int referenceByte;
+	//int referenceByte;
 	char FIFOHead;
 };
 
@@ -83,6 +83,7 @@ bool isEmpty();
 bool isFull();
 void Enqueue(struct PCB process);
 void Dequeue();
+int frameSpot();
 struct PCB Front();
 bool framesIsEmpty();
 bool framesIsFull();
@@ -104,9 +105,9 @@ int billion = 1000000000;
 
 
 int main(int argc, char **argv) {
-	int totalWorkers = 0, simulWorkers = 0, tempPid, i, j, c, totalFrames = 256, pageSize = 1000, maxNewNano = 500000000, pageRequest = -1, currentFrame = -1; 
+	int totalWorkers = 0, simulWorkers = 0, tempPid, i, j, c, maxNewNano = 500000000, pageRequest = -1, currentFrame = -1; 
 	int fileLines = 0, lineMax = 9500, frameNumber, printTime = 1;
-	bool fileGiven = false, messageReceivedBool = false, doneRunning = false, doneCreating = false, verboseOn = false, inFrame, terminating = false;
+	bool fileGiven = false, messageReceivedBool = false,  doneCreating = false, verboseOn = false, inFrame, terminating = false;
 	char *userFile = NULL;
 	struct PCB currentProcess;
 
@@ -205,7 +206,7 @@ int main(int argc, char **argv) {
 		//Initializing the frame number for all pages in each process to -1 
 		for(i = 0; i < 18; i++) {
 			for(j = 0; j < 32; j++) {
-				processTable[i].page[j].frameNumber = -1;
+				processTable[i].pageTable.pages[j].frameNumber = -1;
 			}
 		}
 
@@ -340,10 +341,9 @@ int main(int argc, char **argv) {
 				} //Process is terminating
 				else {
 					if(verboseOn && fileLines < lineMax) {
-						fprintf(logFile, "\nOss: process %d terminating at time %d:%d", currentProcess.pid,
-								received.offset, *seconds, *nanoSeconds);
+						fprintf(logFile, "\nOss: process %d terminating at time %d:%d", currentProcess.pid, *seconds, *nanoSeconds);
 						fileLines++;
-						printf("\nOss: process %d terminating at time %d:%d", currentProcess.pid, received.offset, *seconds, *nanoSeconds);
+						printf("\nOss: process %d terminating at time %d:%d", currentProcess.pid, *seconds, *nanoSeconds);
 					}
 
 					terminating = true;
@@ -403,12 +403,31 @@ int main(int argc, char **argv) {
 						incrementClock(14000000);
 
 						frameNumber = frameSpot();
-						//frameTable[frameNumber]. 
+					
 
-						if(frameIsFull()) {   
-							
+						//Setting the page to the frame it's going in and the frame information
+						currentProcess.pageTable.pages[message.request] = frameNumber;
+						frameTable[frameNumber].occupied = 1;
+						frameTable[frameNumber].processPid = currentProcess.pid;
+						frameTable[frameNumber].page = currentProcess.pageTable.pages[message.request];
+						frameTable[frameNumber].FIFOHead = ' ';
+
+						if(framesIsFull()) {   
+							if(verboseOn && fileLines < lineMax) {
+								fprintf(logFile, "\nOss: Clearing frame %d and swapping in process %d's page %d", frameNumber, currentProcess.pid, 
+										message.request);
+								fileLines++;
+								printf("\nOss: Clearing frame %d and swapping in process %d's page %d", frameNumber, currentProcess.pid, 
+										message.request);
+							}	
 						} else {
-
+							if(verboseOn && fileLines < lineMax) {
+								fprintf(logFile, "\nOss: Putting process %d's page %d in frame %d",  currentProcess.pid, 
+										message.request, frameNumber);
+								fileLines++;
+								printf("\nOss: Putting process %d's page %d in frame %d", currentProcess.pid, 
+										message.request, frameNumber);
+							}
 						}
 					}
 				}
@@ -431,7 +450,7 @@ int main(int argc, char **argv) {
 					//print memory allocation table
 					for(i = 0; i < 256; i++) {
 						fprintf(logFile, "\nFrame %d:        %d        %d          %s", i, frameTable[i].occupied, frameTable[i].dirtyBit, 
-								frameTable[i].FIFOHead);
+								&frameTable[i].FIFOHead);
 					}
 				}
 				printTime++;
@@ -610,7 +629,7 @@ int frameSpot() {
 		DequeuePage();
 	} else {
 		for(i = 0; i < 256; i++) {
-			if(frameQueue[i].occupied == 0) {
+			if(frameQueue[i].frameNumber < 0) {
 				location = i;	
 				break;
 			}	
