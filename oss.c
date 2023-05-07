@@ -47,8 +47,6 @@ FILE *logFile;
 struct pageTable {
 	int pageSize;   //1K
 	int frameNumber;
-	int validBit;
-	int maxSize;
 	int pages[32];
 };
 
@@ -58,7 +56,7 @@ struct PCB {
 	int occupied;
 	pid_t pid;
 	int pageRequest;
-	struct pageTable pageTable;
+	struct pageTable page;
 	int memoryAddress;
 	char FIFOHead;
 };
@@ -69,6 +67,7 @@ struct frame {
 	int processPid;
 	struct pageTable page;
 	int referenceByte;
+	char FIFOHead;
 };
 
 
@@ -100,11 +99,12 @@ struct my_msgbuf message;
 struct my_msgbuf received;
 int msqid;
 key_t key;
+int billion = 1000000000;
 
 
 
 int main(int argc, char **argv) {
-	int totalWorkers = 0, simulWorkers = 0, tempPid, i, j, c, billion = 1000000000, totalFrames = 256, pageSize = 1000, maxNewNano = 500000000, pageRequest = -1, currentFrame = -1; 
+	int totalWorkers = 0, simulWorkers = 0, tempPid, i, j, c, totalFrames = 256, pageSize = 1000, maxNewNano = 500000000, pageRequest = -1, currentFrame = -1; 
 	int fileLines = 0, lineMax = 9500, frameNumber, printTime = 1;
 	bool fileGiven = false, messageReceivedBool = false, doneRunning = false, doneCreating = false, verboseOn = false, inFrame, terminating = false;
 	char *userFile = NULL;
@@ -383,7 +383,7 @@ int main(int argc, char **argv) {
 
 						//Send message back and incremenet clock 100ns
 						incrementClock(100);
-						message.faulted = false
+						message.faulted = false;
 						message.choice = received.choice;
 						message.mtype = received.pid;
 
@@ -403,7 +403,7 @@ int main(int argc, char **argv) {
 						incrementClock(14000000);
 
 						frameNumber = frameSpot();
-						frameTable[frameNumber]. 
+						//frameTable[frameNumber]. 
 
 						if(frameIsFull()) {   
 							
@@ -422,11 +422,17 @@ int main(int argc, char **argv) {
 
 			//Print current memoory allocation table every second
 			if(printTime <= *seconds) {
+				struct pageTable frontPage = FrontPage();
+				int headFIFOFrame = frontPage.frameNumber;
+				headFIFOFrame.FIFOHead = '*';
 				if(verboseOn && fileLines < lineMax) {
-
-					fprintf(logFile, "\n\n\nCurrent memory layout at time %d:%d is:");
+					fprintf(logFile, "\n\n\nCurrent memory layout at time %d:%d is:", *seconds, *nanoSeconds);
 					fprintf(logFile, "\n           Occupied     DirtyBit     HeadOfFIFO");
 					//print memory allocation table
+					for(i = 0; i < 256; i++) {
+						fprintf(logFile, "\nFrame %d:        %d        %d          %s", i, frameTable[i].occupied, frameTable[i].dirtyBit, 
+								frameTable[i].FIFOHead);
+					}
 				}
 				printTime++;
 			}
@@ -526,24 +532,6 @@ void help() {
 }
 
 
-int frameSpot() {
-	int location, i;
-	struct pageTable frontPage;
-	if(framesIsFull()) {
-		frontPage = FrontPage();
-		location = frontPage.frameNumber;
-		DequeuePage();
-	} else {
-		for(i = 0; i < 256; i++) {
-			if(frame[i].occupied == 0) {
-				location = i;	
-				break;
-			}	
-		}	
-	}
-	return location;
-}
-
 
 
 struct PCB queue[max_processes];
@@ -613,9 +601,29 @@ int frameFront =  -1;
 int frameRear = -1;
 
 
+int frameSpot() {
+	int location, i;
+	struct pageTable frontPage;
+	if(framesIsFull()) {
+		frontPage = FrontPage();
+		location = frontPage.frameNumber;
+		DequeuePage();
+	} else {
+		for(i = 0; i < 256; i++) {
+			if(frameQueue[i].occupied == 0) {
+				location = i;	
+				break;
+			}	
+		}	
+	}
+	return location;
+}
+
+
 bool framesIsEmpty() {
 	return(frameFront == -1 && frameRear == -1);
 }
+
 
 bool framesIsFull() {
 	if((frameRear + 1) + frameFront == max_frames)
