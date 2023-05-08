@@ -30,7 +30,7 @@ struct my_msgbuf {
 int main(int argc, char** iterations) {
 	struct my_msgbuf message;
 	struct my_msgbuf received;
-	int msqid, i;
+	int msqid;
 	key_t key;
 	message.mtype = getppid();
 	received.mtype = 1;
@@ -106,17 +106,19 @@ int main(int argc, char** iterations) {
 			message.choice = 2;   //Write
 		}
 
-		if((memoryReferences % terminateCheck) == 0) {
+		if((memoryReferences % terminateCheck) == 0 && memoryReferences > 1) {
 			//Decide to terminate or not
 			terminateRandomNum = (rand() % (100 - 1 + 1) + 1);
-			if(terminateRandomNum < 30) {
+			if(terminateRandomNum < 20) {
 				terminate = true;
 				message.choice = 3;
 			}
+			printf("\nProcess is choosing to terminate");
 		}
 
 
-
+		printf("\n%d sending message to parent requesting %d", getpid(), message.request);
+		
 		if(msgsnd(msqid, &message, sizeof(my_msgbuf) - sizeof(long), 0) == -1) {
 			perror("\nmsgsend to parent failed");
 			exit(1);
@@ -140,8 +142,8 @@ int main(int argc, char** iterations) {
 
 		afterAccessSec = *sharedSeconds;
 		afterAccessNano = *sharedNanoSeconds;
-		memAccessSpeedSec = (afterAccessSec - beforeAccessSec);
-		memAccessSpeed += (afterAccessNano - beforeAccessNano);
+		memAccessSpeedSec += (afterAccessSec - beforeAccessSec);
+		memAccessSpeedNano += (afterAccessNano - beforeAccessNano);
 		sprintf(seconds, "%d.", memAccessSpeedSec);
 		sprintf(nanoSeconds, "%d", memAccessSpeedNano);
 		strcat(seconds, nanoSeconds);

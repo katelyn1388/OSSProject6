@@ -68,6 +68,7 @@ struct frame {
 	struct pageTable page;
 	//int referenceByte;
 	char FIFOHead;
+	int frameNumber;
 };
 
 
@@ -87,9 +88,9 @@ int frameSpot();
 struct PCB Front();
 bool framesIsEmpty();
 bool framesIsFull();
-void EnqueuePage(struct pageTable page);
+void EnqueuePage(struct frame page);
 void DequeuePage(int frameNumber);
-struct pageTable FrontPage();
+struct frame FrontPage();
 
 static void myhandler(int s);
 static int setupinterrupt();
@@ -107,7 +108,7 @@ int billion = 1000000000;
 int main(int argc, char **argv) {
 	int totalWorkers = 0, simulWorkers = 0, tempPid, i, j, c, maxNewNano = 500000000, pageRequest = -1, currentFrame = -1; 
 	int fileLines = 0, lineMax = 9500, frameNumber, printTime = 1;
-	bool fileGiven = false, messageReceivedBool = false,  doneCreating = false, verboseOn = false, inFrame, terminating = false;
+	bool fileGiven = false, messageReceivedBool = false,  doneCreating = false, verboseOn = false, inFrame, terminating = false, firstTime = true;
 	char *userFile = NULL;
 	struct PCB currentProcess;
 
@@ -206,8 +207,12 @@ int main(int argc, char **argv) {
 		//Initializing the frame number for all pages in each process to -1 
 		for(i = 0; i < 18; i++) {
 			for(j = 0; j < 32; j++) {
-				processTable[i].pageTable.pages[j].frameNumber = -1;
+				processTable[i].pageTable.pages[j] = -1;
 			}
+		}
+
+		for(i = 0; i < 256; i++) {
+			frameTable[i].frameNumber = i;
 		}
 
 
@@ -232,9 +237,10 @@ int main(int argc, char **argv) {
 
 
 
-		while(totalWorkers <= 100 && (time(NULL) < endTime)) {	
+		while(totalWorkers <= 100 /*&& (time(NULL) < endTime)*/) {	
 			//If it's time to make another child, do so as long as there's less than 18 simultaneous already running
-			if(*seconds > chooseTimeSec || (*seconds == chooseTimeSec && *nanoSeconds >= chooseTimeNano)) {
+			if(*seconds > chooseTimeSec || (*seconds == chooseTimeSec && *nanoSeconds >= chooseTimeNano || firstTime)) {
+				if(totalWorkers > 15) firstTime = false;
 				if((simulWorkers < 18) && !doneCreating) {
 					for(i = 0; i < 18; i++) {
 						if(processTable[i].occupied == 0) {
@@ -297,12 +303,13 @@ int main(int argc, char **argv) {
 						break;
 					} 	
 				}
+				printf("\n\nMessage received from %d, request: %d  choice: %d", currentProcess.pid, pageRequest, received.choice);  
 			}
 
 
 			if(messageReceivedBool) {
 				//Process's page request is already in a frame and they just want to read it
-				if(message.choice == 1) {
+				if(received.choice == 1) {
 					if(verboseOn && fileLines < lineMax) {
 						fprintf(logFile, "\nOss: process %d requesting read of address %d at time %d:%d", currentProcess.pid,
 								received.offset, *seconds, *nanoSeconds);
@@ -313,14 +320,14 @@ int main(int argc, char **argv) {
 					terminating = false;
 
 
-					if(currentProcess.pageTable.pages[pageRequest].frameNumber >= 0) { 
+					if(currentProcess.pageTable.pages[pageRequest] >= 0) { 
 						inFrame = true;
-						currentFrame = currentProcess.pageTable.pages[pageRequest].frameNumber;
+						currentFrame = currentProcess.pageTable.pages[pageRequest];
 					} else
 						inFrame = false;
 
 				} //Process is requesting to write to page
-				else if(message.choice == 2) {    
+				else if(received.choice == 2) {    
 					if(verboseOn && fileLines < lineMax) {
 						fprintf(logFile, "\nOss: process %d requesting write of address %d at time %d:%d", currentProcess.pid,
 								received.offset, *seconds, *nanoSeconds);
@@ -330,9 +337,9 @@ int main(int argc, char **argv) {
 
 					terminating = false;
 				
-					if(currentProcess.pageTable.pages[pageRequest].frameNumber >= 0) { 
+					if(currentProcess.pageTable.pages[pageRequest] >= 0) { 
 						inFrame = true;
-						currentFrame = currentProcess.pageTable.pages[pageRequest].frameNumber;
+						currentFrame = currentProcess.pageTable.pages[pageRequest];
 					} else
 						inFrame = false;
 
@@ -350,6 +357,13 @@ int main(int argc, char **argv) {
 
 					for(i = 0; i < 32; i++) {
 						//If the page is in a frame, free up that frame
+						if(currentProcess.pageTable.pages[i] > 0) {
+							frameTable[i].occupied = 0;
+							frameTable[i].FIFOHead = ' ';
+							frameTable[i].processPid = 0;
+							frameTable[i].dirtyBit = 0;
+							currentProcess.pageTable.pages[i] = -1;
+						}
 					}
 			
 				}
@@ -404,13 +418,15 @@ int main(int argc, char **argv) {
 
 						frameNumber = frameSpot();
 					
-
 						//Setting the page to the frame it's going in and the frame information
 						currentProcess.pageTable.pages[message.request] = frameNumber;
 						frameTable[frameNumber].occupied = 1;
 						frameTable[frameNumber].processPid = currentProcess.pid;
-						frameTable[frameNumber].page = currentProcess.pageTable.pages[message.request];
+						//frameTable[frameNumber].page = currentProcess.pageTable.pages[message.request];
 						frameTable[frameNumber].FIFOHead = ' ';
+
+						//Adding frame to queue
+						EnqueuePage(frameTable[frameNumber]);
 						
 						if(framesIsFull()) {   
 							if(verboseOn && fileLines < lineMax) {
@@ -430,6 +446,17 @@ int main(int argc, char **argv) {
 							}
 						}
 
+
+						message.faulted = true;
+						message.choice = received.choice;
+						message.mtype = received.pid;
+
+						if(msgsnd(msqid, &message, sizeof(my_msgbuf) - sizeof(long), 0) == -1) {
+							perror("\n\nmsgsend to child failed");
+							exit(1);
+						}
+
+
 						if(message.choice == 2) {
 							frameTable[frameNumber].dirtyBit = 1;
 							fprintf(logFile, "\nOss: Indicating to %d that write has happened to address %d",  currentProcess.pid, 
@@ -444,6 +471,12 @@ int main(int argc, char **argv) {
 
 					}
 				}
+
+
+				if(totalWorkers < 5)
+					incrementClock(5500);
+
+				printf("\nTime:   %d:%d", *seconds, *nanoSeconds);
 			}
 
 
@@ -454,9 +487,8 @@ int main(int argc, char **argv) {
 
 			//Print current memoory allocation table every second
 			if(printTime <= *seconds) {
-				struct pageTable frontPage = FrontPage();
-				int headFIFOFrame = frontPage;
-				headFIFOFrame.FIFOHead = '*';
+				struct frame frontFrame = FrontPage();
+				frontFrame.FIFOHead = '*';
 				if(verboseOn && fileLines < lineMax) {
 					fprintf(logFile, "\n\n\nCurrent memory layout at time %d:%d is:", *seconds, *nanoSeconds);
 					fprintf(logFile, "\n           Occupied     DirtyBit     HeadOfFIFO");
@@ -475,7 +507,6 @@ int main(int argc, char **argv) {
 
 				
 		}
-
 
 
 
@@ -531,12 +562,9 @@ void incrementClock(int nanoIncrement) {
 		exit(1);
 	}
 
-
 	//Setting seconds and nanoseconds to initial values
 	int * seconds = (int *)(sec_ptr);
-
 	int * nanoSeconds = (int *)(nano_ptr);
-
 
 	if((*nanoSeconds + nanoIncrement) < billion)
 		*nanoSeconds += nanoIncrement;
@@ -548,13 +576,9 @@ void incrementClock(int nanoIncrement) {
 }
 
 
-
-
-
-
 void help() {
-	printf("\nThis program takes in a logfile or uses a deault file to log all of the output created while running");
-	printf("\nIn this program, the FIFO plage replacement algorithm is used to simulate processes who require and request more space");
+	printf("\nThis program takes in a logfile or uses a default file to log all of the output created while running");
+	printf("\nIn this program, the FIFO page replacement algorithm is used to simulate processes who require and request more space");
 	printf("\nWhen the program begins, it will start forking off processes, only allowing 18 to run simultaneously, and each process will continuously ask for more space");
 	printf("\nThe program will terminate after either over 100 processes have been created or 2 real life seconds have passed.");
 	printf("\n\nInput options:");
@@ -563,8 +587,6 @@ void help() {
 	printf("\n\nInput example");
 	printf("\n./oss -f logfile.txt");
 }
-
-
 
 
 struct PCB queue[max_processes];
@@ -626,7 +648,7 @@ struct PCB Front() {
 
 
 
-struct frameTable frameQueue[max_frames];
+struct frame frameQueue[max_frames];
 
 //Frame queue function pointers
 int frameFront =  -1; 
@@ -635,14 +657,14 @@ int frameRear = -1;
 
 int frameSpot() {
 	int location, i;
-	struct frameTable frontPage;
+	struct frame frontPage;
 	if(framesIsFull()) {
 		frontPage = FrontPage();
 		location = frontPage.frameNumber;
-		DequeuePage();
+		DequeuePage(location);
 	} else {
 		for(i = 0; i < 256; i++) {
-			if(frameQueue[i].frameNumber < 0) {
+			if(frameQueue[i].occupied == 0) {
 				location = i;	
 				break;
 			}	
@@ -666,7 +688,7 @@ bool framesIsFull() {
 
 
 
-void EnqueuePage(struct framTable page) {
+void EnqueuePage(struct frame page) {
 	if(framesIsFull()) 
 		return;
 	if(framesIsEmpty()) {
@@ -731,7 +753,7 @@ void DequeuePage(int frameNumber) {
 
 
 
-struct pageTable FrontPage() {
+struct frame FrontPage() {
 	if(frameFront == -1) {
 		printf("\n\nError: Cannot return front of an empty queue: frame");
 		exit(1);
