@@ -239,9 +239,9 @@ int main(int argc, char **argv) {
 
 		while(totalWorkers <= 100 /*&& (time(NULL) < endTime)*/) {	
 			//If it's time to make another child, do so as long as there's less than 18 simultaneous already running
-			if(*seconds > chooseTimeSec || (*seconds == chooseTimeSec && *nanoSeconds >= chooseTimeNano || firstTime)) {
+			if(*seconds > chooseTimeSec || (*seconds == chooseTimeSec && *nanoSeconds >= chooseTimeNano) || firstTime) {
 				if(totalWorkers > 15) firstTime = false;
-				if((simulWorkers < 18) && !doneCreating) {
+				if((simulWorkers < 1) && !doneCreating) {
 					for(i = 0; i < 18; i++) {
 						if(processTable[i].occupied == 0) {
 							currentProcess = processTable[i];
@@ -303,7 +303,7 @@ int main(int argc, char **argv) {
 						break;
 					} 	
 				}
-				printf("\n\nMessage received from %d, request: %d  choice: %d", currentProcess.pid, pageRequest, received.choice);  
+				printf("\n\n\nOSS: Message received from %d, request: %d   offset: %d     choice: %d", currentProcess.pid, pageRequest, received.offset, received.choice);  
 			}
 
 
@@ -314,7 +314,7 @@ int main(int argc, char **argv) {
 						fprintf(logFile, "\nOss: process %d requesting read of address %d at time %d:%d", currentProcess.pid,
 								received.offset, *seconds, *nanoSeconds);
 						fileLines++;
-						printf("\nOss: process %d requesting read of address %d at time %d:%d", currentProcess.pid, message.offset, *seconds, *nanoSeconds);
+						printf("\nOss: process %d requesting read of address %d at time %d:%d", currentProcess.pid, received.offset, *seconds, *nanoSeconds);
 					}
 
 					terminating = false;
@@ -363,6 +363,7 @@ int main(int argc, char **argv) {
 							frameTable[i].processPid = 0;
 							frameTable[i].dirtyBit = 0;
 							currentProcess.pageTable.pages[i] = -1;
+							DequeuePage(i);
 						}
 					}
 			
@@ -373,7 +374,7 @@ int main(int argc, char **argv) {
 				if(!terminating) {
 					//Process's request page is already in memory
 					if(inFrame) {
-						if(message.choice == 1) {
+						if(received.choice == 1) {
 							if(verboseOn && fileLines < lineMax) {
 								fprintf(logFile, "\nOss: Address %d in frame %d, giving data to %d at time  %d:%d",
 										received.offset, currentFrame, currentProcess.pid, *seconds, *nanoSeconds);
@@ -383,7 +384,7 @@ int main(int argc, char **argv) {
 							}
 						}
 						//Process requested to write to page
-						if(message.choice == 2) {
+						if(received.choice == 2) {
 							frameTable[currentFrame].dirtyBit = 1;
 							if(verboseOn && fileLines < lineMax) {
 								fprintf(logFile, "\nOss: Address %d in frame %d, writing data to frame at time  %d:%d",
@@ -419,7 +420,7 @@ int main(int argc, char **argv) {
 						frameNumber = frameSpot();
 					
 						//Setting the page to the frame it's going in and the frame information
-						currentProcess.pageTable.pages[message.request] = frameNumber;
+						currentProcess.pageTable.pages[received.request] = frameNumber;
 						frameTable[frameNumber].occupied = 1;
 						frameTable[frameNumber].processPid = currentProcess.pid;
 						//frameTable[frameNumber].page = currentProcess.pageTable.pages[message.request];
@@ -431,18 +432,18 @@ int main(int argc, char **argv) {
 						if(framesIsFull()) {   
 							if(verboseOn && fileLines < lineMax) {
 								fprintf(logFile, "\nOss: Clearing frame %d and swapping in process %d's page %d", frameNumber, currentProcess.pid, 
-										message.request);
+										received.request);
 								fileLines++;
 								printf("\nOss: Clearing frame %d and swapping in process %d's page %d", frameNumber, currentProcess.pid, 
-										message.request);
+										received.request);
 							}	
 						} else {
 							if(verboseOn && fileLines < lineMax) {
 								fprintf(logFile, "\nOss: Putting process %d's page %d in frame %d",  currentProcess.pid, 
-										message.request, frameNumber);
+										received.request, frameNumber);
 								fileLines++;
 								printf("\nOss: Putting process %d's page %d in frame %d", currentProcess.pid, 
-										message.request, frameNumber);
+										received.request, frameNumber);
 							}
 						}
 
@@ -460,12 +461,12 @@ int main(int argc, char **argv) {
 						if(message.choice == 2) {
 							frameTable[frameNumber].dirtyBit = 1;
 							fprintf(logFile, "\nOss: Indicating to %d that write has happened to address %d",  currentProcess.pid, 
-										message.offset);
+										received.offset);
 							fprintf(logFile, "\nOss: Dirty bit of frame %d set, additng additional time to clock", frameNumber);
 							fileLines += 2;
 							incrementClock(100);
 							printf("\nOss: Indicating to %d that write has happened to address %d",  currentProcess.pid, 
-										message.offset);
+										received.offset);
 
 						}
 
@@ -473,9 +474,7 @@ int main(int argc, char **argv) {
 				}
 
 
-				if(totalWorkers < 5)
-					incrementClock(5500);
-
+				incrementClock(5500);
 				printf("\nTime:   %d:%d", *seconds, *nanoSeconds);
 			}
 

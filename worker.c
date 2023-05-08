@@ -99,6 +99,7 @@ int main(int argc, char** iterations) {
 		messageReceived = false;
 		message.request = (rand() % (31 - 0 + 1));
 		message.offset = ((message.request * 1024) + (rand() % (1023 - 0 + 1)));
+		printf("\n\nOffset:   %d", message.offset);
 		choiceNum = (rand() % (100 - 0 + 1));
 		if(choiceNum < 80) {
 			message.choice = 1;   //Read
@@ -113,11 +114,10 @@ int main(int argc, char** iterations) {
 				terminate = true;
 				message.choice = 3;
 			}
-			printf("\nProcess is choosing to terminate");
 		}
 
 
-		printf("\n%d sending message to parent requesting %d", getpid(), message.request);
+		printf("\n%d sending message to parent requesting %d    offset: %d", getpid(), message.request, message.offset);
 		
 		if(msgsnd(msqid, &message, sizeof(my_msgbuf) - sizeof(long), 0) == -1) {
 			perror("\nmsgsend to parent failed");
