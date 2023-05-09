@@ -355,7 +355,7 @@ int main(int argc, char **argv) {
 
 					terminating = true;
 
-					for(i = 0; i < 32; i++) {
+					for(i = 0; i < 31; i++) {
 						//If the page is in a frame, free up that frame
 						if(currentProcess.pageTable.pages[i] > 0) {
 							frameTable[i].occupied = 0;
@@ -363,6 +363,7 @@ int main(int argc, char **argv) {
 							frameTable[i].processPid = 0;
 							frameTable[i].dirtyBit = 0;
 							currentProcess.pageTable.pages[i] = -1;
+							printf("\n\nDequeuing frame %d", i);
 							DequeuePage(i);
 						}
 					}
@@ -474,18 +475,14 @@ int main(int argc, char **argv) {
 				}
 
 
-				incrementClock(5500);
+				incrementClock(550000);
 				printf("\nTime:   %d:%d", *seconds, *nanoSeconds);
 			}
 
 
-
-
-
-
-
 			//Print current memoory allocation table every second
-			if(printTime <= *seconds) {
+			if(*seconds >= printTime) {
+				printf("\n\n\n\n\n\nPrinting time");
 				struct frame frontFrame = FrontPage();
 				frontFrame.FIFOHead = '*';
 				if(verboseOn && fileLines < lineMax) {
@@ -500,11 +497,7 @@ int main(int argc, char **argv) {
 				}
 				printTime++;
 			}
-
-
-
-
-				
+	
 		}
 
 
@@ -518,6 +511,12 @@ int main(int argc, char **argv) {
 
 		//Closing log file
 		fclose(logFile);
+
+		for(i = 0; i <= 19; i++) {
+			pid = processTable[i].pid;
+			kill(pid, SIGKILL);
+		}
+
 
 		//Closing message queue
 		if(msgctl(msqid, IPC_RMID, NULL) == -1) {
@@ -700,20 +699,6 @@ void EnqueuePage(struct frame page) {
 
 	frameQueue[frameRear] = page;	
 }
-
-
-/*void DequeuePage() {
-	if(framesIsEmpty()) {
-		printf("\n\nError: Frames queue is empty\n\n");
-		return;
-	} else if(frameFront == frameRear) 
-		frameRear = frameFront = -1;
-	else {
-		frameFront += 1;
-		if(frameFront == max_frames)
-			frameFront = frameFront % max_frames;
-	}
-}*/
 
 
 void DequeuePage(int frameNumber) {
