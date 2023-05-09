@@ -1,0 +1,24 @@
+#Katelyn Bowers
+#Project 6
+#April 9, 2023
+
+##Usage
+This program simulates an operating system that forks off at most 100 child processes and has them requesting memory pages to be put into the main memory frame table. Each process has
+32 pages and there are 256 frames altogether. At one time there can be no more than 18 simultaneous children running.
+If a page that a process requests isn't already in the frame table, a page fault occurs and it replaces one of the pages already in a frame according to the FIFO rule, so the oldest 
+one gets replaced. If the page is already in a frame, it just gets read or written to and continues to the next request. 
+This program terminates after either 100 processes have been made or 2 real-life seconds have passed.
+Every simulated second a table will print out of all of the current frames.
+
+This program gets compiled with the command make -f Makefile and then gets run with ./oss with the possible inputs given below.
+To clean the directory after using this program, use make clean.
+
+##Input
+An example of valid input:
+./oss -f logfile.txt -v
+This input would start the program, turn verbose on to log everything, and log everything to the file logfile.txt
+If -v is left out then nothing will be printed to the logfile. If no logfile is given, a default one called logfile.txt will be used
+
+
+##Version Control
+Git was used for the version control of this project 
