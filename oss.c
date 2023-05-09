@@ -377,8 +377,8 @@ int main(int argc, char **argv) {
 					if(inFrame) {
 						if(received.choice == 1) {
 							if(verboseOn && fileLines < lineMax) {
-								fprintf(logFile, "\nOss: Address %d in frame %d, giving data to %d at time  %d:%d",
-										received.offset, currentFrame, currentProcess.pid, *seconds, *nanoSeconds);
+								fprintf(logFile, "\n%dOss: Address %d in frame %d, giving data to %d at time  %d:%d",
+										fileLines, received.offset, currentFrame, currentProcess.pid, *seconds, *nanoSeconds);
 								fileLines++;
 								printf("\nOss: Address %d in frame %d, giving data to %d at time  %d:%d",
 										received.offset, currentFrame, currentProcess.pid, *seconds, *nanoSeconds);
@@ -484,16 +484,26 @@ int main(int argc, char **argv) {
 			if(*seconds >= printTime) {
 				printf("\n\n\n\n\n\nPrinting time");
 				struct frame frontFrame = FrontPage();
-				frontFrame.FIFOHead = '*';
+				printf("\nThe head frame's number: %d", frontFrame.frameNumber);
+				//frontFrame.FIFOHead = '*';
 				if(verboseOn && fileLines < lineMax) {
 					fprintf(logFile, "\n\n\nCurrent memory layout at time %d:%d is:", *seconds, *nanoSeconds);
 					fprintf(logFile, "\n           Occupied     DirtyBit     HeadOfFIFO");
 					//print memory allocation table
 					for(i = 0; i < 256; i++) {
-						fprintf(logFile, "\nFrame %d:        %d        %d          %s", i, frameTable[i].occupied, frameTable[i].dirtyBit, 
-								&frameTable[i].FIFOHead);
+						if(frameTable[i].frameNumber == frontFrame.frameNumber)  frameTable[i].FIFOHead = '*'; else frameTable[i].FIFOHead = ' ';
+						fprintf(logFile, "\nFrame %d:        %d        %d          %c", i, frameTable[i].occupied, frameTable[i].dirtyBit, 
+								frameTable[i].FIFOHead);
 					}
 					fileLines += 258;
+					printf("\n\n\nCurrent memory layout at time %d:%d is:", *seconds, *nanoSeconds);
+					printf("\n           Occupied     DirtyBit     HeadOfFIFO");
+					//print memory allocation table
+					for(i = 0; i < 256; i++) {
+						printf("\nFrame %d:        %d        %d          %c", i, frameTable[i].occupied, frameTable[i].dirtyBit, 
+								frameTable[i].FIFOHead);
+					}
+
 				}
 				printTime++;
 			}
@@ -512,6 +522,7 @@ int main(int argc, char **argv) {
 		//Closing log file
 		fclose(logFile);
 
+		int pid;
 		for(i = 0; i <= 19; i++) {
 			pid = processTable[i].pid;
 			kill(pid, SIGKILL);
