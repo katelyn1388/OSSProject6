@@ -85,8 +85,8 @@ int main(int argc, char** iterations) {
 	printf("\nWorker started: %d\n", getpid());
 
 
-	int memoryReferences, terminateCheck = 1000, terminateRandomNum, choiceNum;
-	int memoryPerSec, pageFaults, memAccessSpeedSec, memAccessSpeedNano, nextSecond = *sharedSeconds + 1, startingSecond = *sharedSeconds, memoryAccesses;
+	int memoryReferences, terminateCheck = 10, terminateRandomNum, choiceNum;
+	int memoryPerSec, pageFaults = 0, memAccessSpeedSec, memAccessSpeedNano, nextSecond = *sharedSeconds + 1, startingSecond = *sharedSeconds, memoryAccesses;
 	int beforeAccessSec, beforeAccessNano, afterAccessSec, afterAccessNano;
 	double memAccessSpeed;
 	bool terminate = false, messageReceived;
@@ -99,7 +99,6 @@ int main(int argc, char** iterations) {
 		messageReceived = false;
 		message.request = (rand() % (31 - 0 + 1));
 		message.offset = ((message.request * 1024) + (rand() % (1023 - 0 + 1)));
-		printf("\n\nOffset:   %d", message.offset);
 		choiceNum = (rand() % (100 - 0 + 1));
 		if(choiceNum < 80) {
 			message.choice = 1;   //Read
@@ -117,8 +116,6 @@ int main(int argc, char** iterations) {
 		}
 
 
-		printf("\n%d sending message to parent requesting %d    offset: %d", getpid(), message.request, message.offset);
-		
 		if(msgsnd(msqid, &message, sizeof(my_msgbuf) - sizeof(long), 0) == -1) {
 			perror("\nmsgsend to parent failed");
 			exit(1);
@@ -154,8 +151,11 @@ int main(int argc, char** iterations) {
 		if(received.choice == 1 || received.choice == 2) {
 			memoryReferences++;
 			memoryAccesses++;
-			if(received.faulted == true) 
+			if(received.faulted == true) {
 				pageFaults++;
+				//printf("Page faulted");
+			}
+
 		}
 
 		if(nextSecond <= *sharedSeconds) {
@@ -168,11 +168,10 @@ int main(int argc, char** iterations) {
 
 	}
 
-
-
-
-
 	printf("\nChild %d is terminating", getpid());
+
+//	printf("\n\n\n%d:  memoryPerSec: %d      *seconds: %d    startingSecond: %d    pageFaults: %f   memoryReferences: %f    memAccessSpeed: %f", 
+		//	memoryPerSec, *sharedSeconds, startingSecond, pageFaults, memoryReferences, memAccessSpeed);
 
 	printf("\n%d:  number of memory accesses per second: %f", getpid(), ((double)memoryPerSec / (double)(*sharedSeconds - startingSecond)));
 	printf("\n%d:  number of page faults per memory access: %f", getpid(), ((double)pageFaults / (double)memoryReferences));

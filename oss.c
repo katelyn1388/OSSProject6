@@ -79,7 +79,7 @@ struct frame frameTable[256];   //256K
 struct PCB process;
 
 void incrementClock(int nanoIncrement);
-void help();
+int help();
 bool isEmpty();
 bool isFull();
 void Enqueue(struct PCB process);
@@ -107,7 +107,7 @@ int billion = 1000000000;
 
 int main(int argc, char **argv) {
 	int totalWorkers = 0, simulWorkers = 0, tempPid, i, j, c, maxNewNano = 500000000, pageRequest = -1, currentFrame = -1; 
-	int fileLines = 0, lineMax = 9500, frameNumber, printTime = 1;
+	int fileLines = 0, lineMax = 999500, frameNumber, printTime = 1;
 	bool fileGiven = false, messageReceivedBool = false,  doneCreating = false, verboseOn = false, inFrame, terminating = false, firstTime = true;
 	char *userFile = NULL;
 	struct PCB currentProcess;
@@ -239,9 +239,9 @@ int main(int argc, char **argv) {
 
 		while(totalWorkers <= 100 /*&& (time(NULL) < endTime)*/) {	
 			//If it's time to make another child, do so as long as there's less than 18 simultaneous already running
-			if(*seconds > chooseTimeSec || (*seconds == chooseTimeSec && *nanoSeconds >= chooseTimeNano) || firstTime) {
+			if((*seconds > chooseTimeSec || (*seconds == chooseTimeSec && *nanoSeconds >= chooseTimeNano)) || firstTime) {
 				if(totalWorkers > 15) firstTime = false;
-				if((simulWorkers < 1) && !doneCreating) {
+				if((simulWorkers < 18) && !doneCreating) {
 					for(i = 0; i < 18; i++) {
 						if(processTable[i].occupied == 0) {
 							currentProcess = processTable[i];
@@ -286,6 +286,8 @@ int main(int argc, char **argv) {
 				}
 			}
 
+			if(totalWorkers > 18) doneCreating = true;
+
 
 			if(msgrcv(msqid, &received, sizeof(my_msgbuf), getpid(), IPC_NOWAIT) == -1) {
 				if(errno == ENOMSG) {
@@ -303,7 +305,6 @@ int main(int argc, char **argv) {
 						break;
 					} 	
 				}
-				printf("\n\n\nOSS: Message received from %d, request: %d   offset: %d     choice: %d", currentProcess.pid, pageRequest, received.offset, received.choice);  
 			}
 
 
@@ -356,16 +357,22 @@ int main(int argc, char **argv) {
 					terminating = true;
 
 					for(i = 0; i < 31; i++) {
-						//If the page is in a frame, free up that frame
+						//If the page is in a frame, free up that fram and dequeue it from the FIFO queue
 						if(currentProcess.pageTable.pages[i] > 0) {
 							frameTable[i].occupied = 0;
 							frameTable[i].FIFOHead = ' ';
 							frameTable[i].processPid = 0;
 							frameTable[i].dirtyBit = 0;
 							currentProcess.pageTable.pages[i] = -1;
-							printf("\n\nDequeuing frame %d", i);
 							DequeuePage(i);
 						}
+					}
+
+					message.faulted = false;
+					message.mtype = received.pid;
+					if(msgsnd(msqid, &message, sizeof(my_msgbuf) - sizeof(long), 0) == -1) {
+						perror("\n\nmsgsend to child failed");
+						exit(1);
 					}
 			
 				}
@@ -424,7 +431,6 @@ int main(int argc, char **argv) {
 						currentProcess.pageTable.pages[received.request] = frameNumber;
 						frameTable[frameNumber].occupied = 1;
 						frameTable[frameNumber].processPid = currentProcess.pid;
-						//frameTable[frameNumber].page = currentProcess.pageTable.pages[message.request];
 						frameTable[frameNumber].FIFOHead = ' ';
 
 						//Adding frame to queue
@@ -476,16 +482,15 @@ int main(int argc, char **argv) {
 
 
 				incrementClock(550000);
-				printf("\nTime:   %d:%d", *seconds, *nanoSeconds);
+				//printf("\nTime:   %d:%d", *seconds, *nanoSeconds);
 			}
 
 
-			//Print current memoory allocation table every second
+			//Print current memory allocation table every second
 			if(*seconds >= printTime) {
 				printf("\n\n\n\n\n\nPrinting time");
 				struct frame frontFrame = FrontPage();
 				printf("\nThe head frame's number: %d", frontFrame.frameNumber);
-				//frontFrame.FIFOHead = '*';
 				if(verboseOn && fileLines < lineMax) {
 					fprintf(logFile, "\n\n\nCurrent memory layout at time %d:%d is:", *seconds, *nanoSeconds);
 					fprintf(logFile, "\n           Occupied     DirtyBit     HeadOfFIFO");
@@ -585,7 +590,7 @@ void incrementClock(int nanoIncrement) {
 }
 
 
-void help() {
+int help() {
 	printf("\nThis program takes in a logfile or uses a default file to log all of the output created while running");
 	printf("\nIn this program, the FIFO page replacement algorithm is used to simulate processes who require and request more space");
 	printf("\nWhen the program begins, it will start forking off processes, only allowing 18 to run simultaneously, and each process will continuously ask for more space");
@@ -594,7 +599,9 @@ void help() {
 	printf("\n-h     output a short description of the project and how to run it");
 	printf("\n-f     the name of the file for output to be logged to");
 	printf("\n\nInput example");
-	printf("\n./oss -f logfile.txt");
+	printf("\n./oss -f logfile.txt\n");
+
+	exit(1);
 }
 
 
