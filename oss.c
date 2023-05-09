@@ -237,7 +237,7 @@ int main(int argc, char **argv) {
 
 
 
-		while(totalWorkers <= 100 /*&& (time(NULL) < endTime)*/) {	
+		while(totalWorkers <= 100 && (time(NULL) < endTime)) {	
 			//If it's time to make another child, do so as long as there's less than 18 simultaneous already running
 			if((*seconds > chooseTimeSec || (*seconds == chooseTimeSec && *nanoSeconds >= chooseTimeNano)) || firstTime) {
 				if(totalWorkers > 15) firstTime = false;
