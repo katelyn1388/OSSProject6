@@ -25,4 +25,5 @@ Git was used for the version control of this project
 
 
 ##Possible Issues
-Project description says to terminate after 2 real life seconds, which this program does, but given that short period of time the entire frame table does not get full. 
+Project description says to terminate after 2 real life seconds, which this program does, but given that short period of time the entire frame table does not get full.
+Sometimes the pids of processes will randomly show up as -1 or 0  

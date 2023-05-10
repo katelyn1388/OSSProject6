@@ -107,7 +107,7 @@ int main(int argc, char** iterations) {
 		if(((memoryReferences % terminateCheck) == 0) && memoryReferences > 1) {
 			//Decide to terminate or not
 			terminateRandomNum = (rand() % (100 - 1 + 1) + 1);
-			if(terminateRandomNum < 20) {
+			if(terminateRandomNum < 10) {
 				terminate = true;
 				message.choice = 3;
 			}
@@ -145,6 +145,9 @@ int main(int argc, char** iterations) {
 		sprintf(nanoSeconds, "%d", memAccessSpeedNano);
 		strcat(seconds, nanoSeconds);
 		memAccessSpeed += atof(seconds);
+
+		if(received.choice == 3)
+			break;
 
 
 

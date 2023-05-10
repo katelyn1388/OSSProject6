@@ -45,8 +45,6 @@ struct my_msgbuf {
 FILE *logFile;
 
 struct pageTable {
-	//int pageSize;   //1K
-	//int frameNumber;
 	int pages[32];
 };
 
@@ -57,8 +55,6 @@ struct PCB {
 	pid_t pid;
 	int pageRequest;
 	struct pageTable pageTable;
-	int memoryAddress;
-	char FIFOHead;
 };
 
 struct frame {
@@ -66,7 +62,6 @@ struct frame {
 	int occupied;
 	int processPid;
 	struct pageTable page;
-	//int referenceByte;
 	char FIFOHead;
 	int frameNumber;
 };
@@ -238,6 +233,7 @@ int main(int argc, char **argv) {
 
 
 		while(totalWorkers <= 100 && (time(NULL) < endTime)) {	
+			messageReceivedBool = false;
 			//If it's time to make another child, do so as long as there's less than 18 simultaneous already running
 			if((*seconds > chooseTimeSec || (*seconds == chooseTimeSec && *nanoSeconds >= chooseTimeNano)) || firstTime) {
 				if(totalWorkers > 15) firstTime = false;
@@ -273,9 +269,30 @@ int main(int argc, char **argv) {
 					if(tempPid < 0) { 
 						perror("fork");
 						printf("Terminating: fork failed");
+						//Deallocating shared memory
+						shmdt(sec_ptr);
+						shmctl(sec_id, IPC_RMID, NULL);
+
+						shmdt(nano_ptr);
+						shmctl(nano_id, IPC_RMID, NULL);
+
+						//Closing log file
+						fclose(logFile);
+
+						int pid;
+						for(i = 0; i <= 19; i++) {
+							pid = processTable[i].pid;
+							kill(pid, SIGKILL);
+						}
+
+
+						//Closing message queue
+						if(msgctl(msqid, IPC_RMID, NULL) == -1) {
+							perror("msgctl");
+							exit(1);
+						}
 						exit(1);
 					} else if(tempPid == 0) {
-						printf("execing a child: %d", getpid());
 						execlp(args[0], args[0], args[1], NULL); 
 						printf("Exec failed, terminating");
 						exit(1);
@@ -283,11 +300,8 @@ int main(int argc, char **argv) {
 
 					simulWorkers++;
 					totalWorkers++;
-					printf("\n\n\n\n\n\n\n\n\nNew child pid: %d", currentProcess.pid);
 				}
 			}
-
-			if(totalWorkers > 18) doneCreating = true;
 
 
 			if(msgrcv(msqid, &received, sizeof(my_msgbuf), getpid(), IPC_NOWAIT) == -1) {
@@ -348,7 +362,7 @@ int main(int argc, char **argv) {
 
 
 				} //Process is terminating
-				else {
+				else if(received.choice == 3) {
 					if(verboseOn && fileLines < lineMax) {
 						fprintf(logFile, "\nOss: process %d terminating at time %d:%d", currentProcess.pid, *seconds, *nanoSeconds);
 						fileLines++;
@@ -377,9 +391,8 @@ int main(int argc, char **argv) {
 					}
 
 					simulWorkers--;
-					currentProcess.pid = 0;
 					currentProcess.occupied = 0;
-			
+					currentProcess.pid = 0;
 				}
 
 
