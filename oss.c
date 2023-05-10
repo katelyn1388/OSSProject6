@@ -283,6 +283,7 @@ int main(int argc, char **argv) {
 
 					simulWorkers++;
 					totalWorkers++;
+					printf("\n\n\n\n\n\n\n\n\nNew child pid: %d", currentProcess.pid);
 				}
 			}
 
@@ -358,13 +359,13 @@ int main(int argc, char **argv) {
 
 					for(i = 0; i < 31; i++) {
 						//If the page is in a frame, free up that fram and dequeue it from the FIFO queue
-						if(currentProcess.pageTable.pages[i] > 0) {
+						if(currentProcess.pageTable.pages[i] > 0) {	
+							DequeuePage(i);
 							frameTable[i].occupied = 0;
 							frameTable[i].FIFOHead = ' ';
 							frameTable[i].processPid = 0;
 							frameTable[i].dirtyBit = 0;
 							currentProcess.pageTable.pages[i] = -1;
-							DequeuePage(i);
 						}
 					}
 
@@ -374,6 +375,10 @@ int main(int argc, char **argv) {
 						perror("\n\nmsgsend to child failed");
 						exit(1);
 					}
+
+					simulWorkers--;
+					currentProcess.pid = 0;
+					currentProcess.occupied = 0;
 			
 				}
 
@@ -417,15 +422,25 @@ int main(int argc, char **argv) {
 					       
 					} else {
 						if(verboseOn && fileLines < lineMax) {
-							fprintf(logFile, "\nOss: address %d is not in a frame, pagefault", message.offset);
+							fprintf(logFile, "\nOss: address %d is not in a frame, pagefault", received.offset);
 							fileLines++;
-							printf("\nOss: address %d is not in a frame, pagefault", message.offset);
+							printf("\nOss: address %d is not in a frame, pagefault", received.offset);
 						}
 				
 						//Increment clock 14ms	
 						incrementClock(14000000);
 
 						frameNumber = frameSpot();
+
+						//Getting the process that last had its page in the frame
+						int lastProcessPid = frameTable[frameNumber].processPid;
+						struct PCB lastProcess;
+						for(i = 0; i < 18; i++) {
+							if(processTable[i].pid == lastProcessPid)
+								lastProcess = processTable[i];
+						}
+
+						lastProcess.pageTable.pages[frameNumber] = -1;
 					
 						//Setting the page to the frame it's going in and the frame information
 						currentProcess.pageTable.pages[received.request] = frameNumber;
@@ -482,7 +497,6 @@ int main(int argc, char **argv) {
 
 
 				incrementClock(550000);
-				//printf("\nTime:   %d:%d", *seconds, *nanoSeconds);
 			}
 
 
@@ -748,7 +762,6 @@ void DequeuePage(int frameNumber) {
                         }
                         i = (i + 1) % max_frames;
                 }
-                printf("\n\nError: Frame %d not found in queue\n\n", frameNumber);
         }
 }
 

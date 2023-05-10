@@ -21,4 +21,8 @@ If -v is left out then nothing will be printed to the logfile. If no logfile is 
 
 
 ##Version Control
-Git was used for the version control of this project 
+Git was used for the version control of this project
+
+
+##Possible Issues
+Project description says to terminate after 2 real life seconds, which this program does, but given that short period of time the entire frame table does not get full. 

@@ -82,17 +82,15 @@ int main(int argc, char** iterations) {
 	int * sharedNanoSeconds = (int *)(nano_ptr);
 
 
-	printf("\nWorker started: %d\n", getpid());
 
-
-	int memoryReferences, terminateCheck = 10, terminateRandomNum, choiceNum;
-	int memoryPerSec, pageFaults = 0, memAccessSpeedSec, memAccessSpeedNano, nextSecond = *sharedSeconds + 1, startingSecond = *sharedSeconds, memoryAccesses;
-	int beforeAccessSec, beforeAccessNano, afterAccessSec, afterAccessNano;
-	double memAccessSpeed;
+	int memoryReferences = 0, terminateCheck = 10, terminateRandomNum = 0, choiceNum = 0;
+	int memoryPerSec = 0, pageFaults = 0, memAccessSpeedSec = 0, memAccessSpeedNano = 0, nextSecond = *sharedSeconds + 1, memoryAccesses = 0;
+	int beforeAccessSec = 0, beforeAccessNano = 0, afterAccessSec = 0, afterAccessNano = 0;
+	double memAccessSpeed = 0;
 	bool terminate = false, messageReceived;
 	char seconds[20];
 	char nanoSeconds[20];
-
+	const int startingSecond = *sharedSeconds;
 
 
 	while(!terminate) {
@@ -106,7 +104,7 @@ int main(int argc, char** iterations) {
 			message.choice = 2;   //Write
 		}
 
-		if((memoryReferences % terminateCheck) == 0 && memoryReferences > 1) {
+		if(((memoryReferences % terminateCheck) == 0) && memoryReferences > 1) {
 			//Decide to terminate or not
 			terminateRandomNum = (rand() % (100 - 1 + 1) + 1);
 			if(terminateRandomNum < 20) {
@@ -121,6 +119,7 @@ int main(int argc, char** iterations) {
 			exit(1);
 		}
 
+		//Before access time to see how long it takes before granted 
 		beforeAccessSec = *sharedSeconds;
 		beforeAccessNano = *sharedNanoSeconds;
 
@@ -137,6 +136,7 @@ int main(int argc, char** iterations) {
 
 		}
 
+		//Stat updates
 		afterAccessSec = *sharedSeconds;
 		afterAccessNano = *sharedNanoSeconds;
 		memAccessSpeedSec += (afterAccessSec - beforeAccessSec);
@@ -153,7 +153,6 @@ int main(int argc, char** iterations) {
 			memoryAccesses++;
 			if(received.faulted == true) {
 				pageFaults++;
-				//printf("Page faulted");
 			}
 
 		}
@@ -170,12 +169,10 @@ int main(int argc, char** iterations) {
 
 	printf("\nChild %d is terminating", getpid());
 
-//	printf("\n\n\n%d:  memoryPerSec: %d      *seconds: %d    startingSecond: %d    pageFaults: %f   memoryReferences: %f    memAccessSpeed: %f", 
-		//	memoryPerSec, *sharedSeconds, startingSecond, pageFaults, memoryReferences, memAccessSpeed);
 
 	printf("\n%d:  number of memory accesses per second: %f", getpid(), ((double)memoryPerSec / (double)(*sharedSeconds - startingSecond)));
 	printf("\n%d:  number of page faults per memory access: %f", getpid(), ((double)pageFaults / (double)memoryReferences));
-	printf("\n%d:  average memory access speed: %f", getpid(), (memAccessSpeed / (double)memoryReferences));   
+	printf("\n%d:  average memory access speed: %f\n", getpid(), (memAccessSpeed / (double)memoryReferences));   
 
 	return 0;
 
